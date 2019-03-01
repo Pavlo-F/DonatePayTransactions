@@ -14,11 +14,11 @@ namespace DonatePayStat
 {
     class MainClass
     {
-		private static int _lastId = 0;
+        private static int _lastId = 0;
 
-		private static string _apiKeyFile = "ApiKey.config";
+        private static string _apiKeyFile = "ApiKey.config";
 
-		private static string _lastIdFile = "LastId.config";
+        private static readonly string _lastIdFile = "LastId.config";
 
         private static string _dir = @"DonateSpawn";
 
@@ -43,55 +43,136 @@ namespace DonatePayStat
             Transactions trans;
 
             while (true)
-			{
-				trans = GetTransactions(apiKey, after: _lastId, type: "donation");
+            {
+                trans = GetTransactions(apiKey, after: _lastId, type: "donation");
 
 
                 if (trans != null && trans.data != null && trans.data.Count > 0)
-				{
-                    foreach (var item in trans.data)
-				    {
-				        Console.WriteLine($"{DateTime.Now.ToString()} Received { item.sum } by {item.vars.name}");
-                    }
-                    
-
-				    _lastId = trans.data.First().id;
+                {
+                    _lastId = trans.data.First().id;
 
                     trans.data = trans.data.Where(d => d.created_at.date.Date >= _startDate.Date).ToList();
+
+                    foreach (var item in trans.data)
+                    {
+                        Console.WriteLine($"{item.created_at.date.ToString()} Received { item.sum } by {item.vars.name}");
+                    }
 
                     GenerateSpawns(trans.data);
 
                     File.WriteAllText(_lastIdFile, _lastId.ToString());
-				}
+                }
 
-				Thread.Sleep(30000);
-			}
+                Thread.Sleep(30000);
+            }
+        }
+
+        private static string DeleteLastSaveGame()
+        {
+            var documents = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var saveGameDir = Path.Combine(documents, @"Documents\My Games\Skyrim\Saves");
+
+            if (!Directory.Exists(saveGameDir))
+            {
+                return null;
+            }
+
+            DirectoryInfo di = new DirectoryInfo(saveGameDir);
+            if (di != null)
+            {
+                FileInfo[] subFiles = di.GetFiles("*.skse");
+                if (subFiles.Length > 0)
+                {
+
+                    var lastSave = subFiles.FirstOrDefault(d => d.LastWriteTime == subFiles.Max(f => f.LastWriteTime));
+                    var secondFile = lastSave.Name.Replace(".skse", ".ess");
+
+                    try
+                    {
+                        File.Delete(lastSave.FullName);
+
+                        var pathToSecondFile = Path.Combine(lastSave.Directory.FullName, secondFile);
+                        if (File.Exists(pathToSecondFile))
+                            File.Delete(pathToSecondFile);
+
+                        return secondFile;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex);
+                    }
+                }
+            }
+
+            return null;
         }
 
 
-		private static void GenerateSpawns(List<Transactionsdata> transactions)
-		{
+        private static void GenerateSpawns(List<Transactionsdata> transactions)
+        {
+            if (!Directory.Exists(_dir))
+            {
+                Directory.CreateDirectory(_dir);
+            }
 
-		    if (!Directory.Exists(_dir))
-		    {
-		        Directory.CreateDirectory(_dir);
-		    }
+            foreach (var tran in transactions)
+            {
+                string sValue = ConfigurationManager.AppSettings[tran.sum];
 
-			foreach (var tran in transactions)
-			{
-				string sValue = ConfigurationManager.AppSettings[tran.sum];
+                if (string.IsNullOrEmpty(sValue))
+                {
+                    continue;
+                }
 
-				if (!string.IsNullOrEmpty(sValue))
-				{
-					string fileName = Path.Combine(_dir, DateTime.Now.ToString("dd_MM_yyyy_HH_mm_ss_ffff") + ".spawn");
-					File.WriteAllText($"{fileName}", sValue, Encoding.ASCII);
-					Console.WriteLine($"file {fileName} created");
-				}
-			}
+                if (sValue == "DeleteLastSave")
+                {
+                    var deletedFile = DeleteLastSaveGame();
+                    if (!string.IsNullOrEmpty(deletedFile))
+                    {
+                        Console.WriteLine($"Save {deletedFile} was deleted by {tran.vars.name}");
+                    }
 
-		}
+                    continue;
+                }
 
-		public static Transactions GetTransactions(string apikey, int limit = 25, int before = 0, int after = 0, int skip = 0, string order = "DESC", string type = "all", string status = "all")
+                var allValuesByKey = sValue.Split(',');
+
+                foreach (var item in allValuesByKey)
+                {
+                    var comand = "";
+                    var countAndComand = item.Split('=');
+                    int comandCount = 0;
+
+                    if (countAndComand.Length == 2)
+                    {
+                        if (!int.TryParse(countAndComand[0], out comandCount))
+                        {
+                            comandCount = 1;
+                        }
+
+                        comand = countAndComand[1];
+                    }
+                    else if (countAndComand.Length == 1)
+                    {
+                        comand = countAndComand[0];
+                        comandCount = 1;
+                    }
+
+                    for (int i = 0; i < comandCount; i++)
+                    {
+                        string fileName = Path.Combine(_dir, DateTime.Now.ToString("dd_MM_yyyy_HH_mm_ss_ffff") + $"{i}.spawn");
+                        File.WriteAllText($"{fileName}", comand, Encoding.ASCII);
+                    }
+
+                    if(comandCount > 0)
+                        Console.WriteLine($"Spawn created, comand: {comand}, count: {comandCount}");
+                }
+                
+            }
+
+        }
+
+        public static Transactions GetTransactions(string apikey, int limit = 25, int before = 0, int after = 0, int skip = 0, string order = "DESC", string type = "all", string status = "all")
         {
             string url = "http://donatepay.ru/api/v1/transactions";
             string parameters = "";
@@ -122,30 +203,30 @@ namespace DonatePayStat
         }
 
 
-		private static string GetResponse(string url)
+        private static string GetResponse(string url)
         {
-			string data = string.Empty;
+            string data = string.Empty;
 
-			try
-			{
-				HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
-				request.AutomaticDecompression = DecompressionMethods.GZip;
-				request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36";
-				using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
-				using (Stream stream = response.GetResponseStream())
-				using (StreamReader reader = new StreamReader(stream))
-				{
-					data = reader.ReadToEnd();
-				}
-			}
-			catch (Exception ex)
-			{
-				Console.WriteLine($"Error GetResponse. Exception: {ex.ToString()}");
-			}
+            try
+            {
+                HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+                request.AutomaticDecompression = DecompressionMethods.GZip;
+                request.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36";
+                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                using (Stream stream = response.GetResponseStream())
+                using (StreamReader reader = new StreamReader(stream))
+                {
+                    data = reader.ReadToEnd();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error GetResponse. Exception: {ex.ToString()}");
+            }
 
-			return data;
+            return data;
         }
     }
-   
+
 
 }

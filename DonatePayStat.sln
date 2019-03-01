@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28010.2016
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DonatePayStat", "DonatePayStat.csproj", "{09370890-B571-44A0-9A57-C3E80A0FB525}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{09370890-B571-44A0-9A57-C3E80A0FB525}.Debug|x86.ActiveCfg = Debug|x86
+		{09370890-B571-44A0-9A57-C3E80A0FB525}.Debug|x86.Build.0 = Debug|x86
+		{09370890-B571-44A0-9A57-C3E80A0FB525}.Release|x86.ActiveCfg = Release|x86
+		{09370890-B571-44A0-9A57-C3E80A0FB525}.Release|x86.Build.0 = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {7223E4B5-21F5-4FD1-A68A-9787B872DE0E}
+	EndGlobalSection
+EndGlobal

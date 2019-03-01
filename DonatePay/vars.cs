@@ -2,7 +2,8 @@
 {
 	public class vars
     {
-		public string name { get; set; }
+        public object user_ip { get; set; }
+        public string name { get; set; }
         public string comment { get; set; }
     }
 }
