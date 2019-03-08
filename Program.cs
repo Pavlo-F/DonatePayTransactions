@@ -9,6 +9,7 @@ using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace DonatePayStat
 {
@@ -22,11 +23,14 @@ namespace DonatePayStat
 
         private static string _dir = @"DonateSpawn";
 
-        private static DateTime _startDate = DateTime.Now;
+        private static DateTime _lastDate = DateTime.Now.Date;
 
+        private static Dictionary<double, string> _donatConfigs = new Dictionary<double, string>();
 
         public static void Main(string[] args)
         {
+            _donatConfigs = GetDonateConfigs();
+
             if (File.Exists(_lastIdFile))
             {
                 var id = File.ReadAllText(_lastIdFile);
@@ -40,32 +44,52 @@ namespace DonatePayStat
 
             string apiKey = File.ReadAllText(_apiKeyFile);
 
-            Transactions trans;
-
             while (true)
             {
-                trans = GetTransactions(apiKey, after: _lastId, type: "donation");
+                Transactions trans = GetTransactions(apiKey, after: _lastId, type: "donation", limit: 10, status: "success");
 
 
                 if (trans != null && trans.data != null && trans.data.Count > 0)
                 {
-                    _lastId = trans.data.First().id;
+                    var last = trans.data.First();
+                    _lastId = last.id;
 
-                    trans.data = trans.data.Where(d => d.created_at.date.Date >= _startDate.Date).ToList();
-
-                    foreach (var item in trans.data)
-                    {
-                        Console.WriteLine($"{item.created_at.date.ToString()} Received { item.sum } by {item.vars.name}");
-                    }
+                    trans.data = trans.data.Where(d => d.created_at.date > _lastDate).ToList();
+                    _lastDate = last.created_at.date;
 
                     GenerateSpawns(trans.data);
 
                     File.WriteAllText(_lastIdFile, _lastId.ToString());
                 }
 
-                Thread.Sleep(30000);
+                Thread.Sleep(20000);
             }
         }
+
+
+        private static Dictionary<double, string> GetDonateConfigs()
+        {
+            Dictionary<double, string> donatConfigs = new Dictionary<double, string>();
+
+            var keys = ConfigurationManager.AppSettings.AllKeys;
+
+            foreach (var key in keys)
+            {
+                double donateKey = ParseDouble(key);
+
+                if (donateKey > 0 && donatConfigs.ContainsKey(donateKey))
+                {
+                    Console.WriteLine($"Duplicate key: {key}. Exist value: {donatConfigs[donateKey]}");
+                }
+                else
+                {
+                    donatConfigs.Add(donateKey, ConfigurationManager.AppSettings[key]);
+                }
+            }
+
+            return donatConfigs;
+        }
+
 
         private static string DeleteLastSaveGame()
         {
@@ -115,9 +139,14 @@ namespace DonatePayStat
                 Directory.CreateDirectory(_dir);
             }
 
+            transactions.Reverse();
             foreach (var tran in transactions)
             {
-                string sValue = ConfigurationManager.AppSettings[tran.sum];
+                var str = $"{tran.created_at.date.ToString()} Status: {tran.status}. Received {tran.sum} by {tran.what}";
+                Console.WriteLine(str);
+                WriteLog(str);
+
+                _donatConfigs.TryGetValue(ParseDouble(tran.sum), out string sValue);
 
                 if (string.IsNullOrEmpty(sValue))
                 {
@@ -139,7 +168,7 @@ namespace DonatePayStat
 
                 foreach (var item in allValuesByKey)
                 {
-                    var comand = "";
+                    var command = "";
                     var countAndComand = item.Split('=');
                     int comandCount = 0;
 
@@ -150,24 +179,29 @@ namespace DonatePayStat
                             comandCount = 1;
                         }
 
-                        comand = countAndComand[1];
+                        command = countAndComand[1];
                     }
                     else if (countAndComand.Length == 1)
                     {
-                        comand = countAndComand[0];
+                        command = countAndComand[0];
                         comandCount = 1;
                     }
 
                     for (int i = 0; i < comandCount; i++)
                     {
                         string fileName = Path.Combine(_dir, DateTime.Now.ToString("dd_MM_yyyy_HH_mm_ss_ffff") + $"{i}.spawn");
-                        File.WriteAllText($"{fileName}", comand, Encoding.ASCII);
+                        File.WriteAllText($"{fileName}", command, Encoding.ASCII);
                     }
 
-                    if(comandCount > 0)
-                        Console.WriteLine($"Spawn created, comand: {comand}, count: {comandCount}");
+                    if (comandCount > 0)
+                    {
+                        var createdStr = $"Spawn created, command: {command}, count: {comandCount}";
+                        Console.WriteLine(createdStr);
+                        WriteLog(createdStr);
+                    }
                 }
-                
+
+                Console.WriteLine();
             }
 
         }
@@ -225,6 +259,29 @@ namespace DonatePayStat
             }
 
             return data;
+        }
+
+
+        private static double ParseDouble(string str)
+        {
+            if (string.IsNullOrWhiteSpace(str))
+                return 0;
+
+            double.TryParse(str, NumberStyles.Any, CultureInfo.GetCultureInfo(1033), out double result);
+
+            return result;
+        }
+
+        private static void WriteLog(string str)
+        {
+            try
+            {
+                File.AppendAllText("Log.txt", str + "\r\n");
+            }
+            catch (Exception e)
+            {
+
+            }
         }
     }
 
