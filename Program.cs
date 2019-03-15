@@ -27,8 +27,17 @@ namespace DonatePayStat
 
         private static Dictionary<double, string> _donatConfigs = new Dictionary<double, string>();
 
+        private static string _logFile = $"Log_{DateTime.Now.Date.ToString("dd_MM_yyyy")}.txt";
+
         public static void Main(string[] args)
         {
+            string donateStatus = "success";
+
+            if (args.Length > 0)
+            {
+                donateStatus = args[0].Trim();
+            }
+
             _donatConfigs = GetDonateConfigs();
 
             if (File.Exists(_lastIdFile))
@@ -46,7 +55,7 @@ namespace DonatePayStat
 
             while (true)
             {
-                Transactions trans = GetTransactions(apiKey, after: _lastId, type: "donation", limit: 10, status: "success");
+                Transactions trans = GetTransactions(apiKey, after: _lastId, type: "donation", limit: 10, status: donateStatus);
 
 
                 if (trans != null && trans.data != null && trans.data.Count > 0)
@@ -98,31 +107,34 @@ namespace DonatePayStat
 
             if (!Directory.Exists(saveGameDir))
             {
+                WriteLog(DateTime.Now.ToString() + " Save directory not exists");
                 return null;
             }
 
             DirectoryInfo di = new DirectoryInfo(saveGameDir);
             if (di != null)
             {
-                FileInfo[] subFiles = di.GetFiles("*.skse");
+                FileInfo[] subFiles = di.GetFiles("*.ess");
+
                 if (subFiles.Length > 0)
                 {
-
                     var lastSave = subFiles.FirstOrDefault(d => d.LastWriteTime == subFiles.Max(f => f.LastWriteTime));
-                    var secondFile = lastSave.Name.Replace(".skse", ".ess");
+                    var secondFile = lastSave.Name.Replace(".ess", ".skse");
 
                     try
                     {
                         File.Delete(lastSave.FullName);
-
                         var pathToSecondFile = Path.Combine(lastSave.Directory.FullName, secondFile);
                         if (File.Exists(pathToSecondFile))
+                        {
                             File.Delete(pathToSecondFile);
+                        }
 
-                        return secondFile;
+                        return lastSave.Name;
                     }
                     catch (Exception ex)
                     {
+                        WriteLog(DateTime.Now.ToString() + " Error delete save " + ex.Message + "\r\n" + ex.InnerException);
                         Console.WriteLine(ex);
                     }
                 }
@@ -153,12 +165,12 @@ namespace DonatePayStat
                     continue;
                 }
 
-                if (sValue == "DeleteLastSave")
+                if (sValue != null && sValue.Contains("DeleteLastSave"))
                 {
                     var deletedFile = DeleteLastSaveGame();
                     if (!string.IsNullOrEmpty(deletedFile))
                     {
-                        Console.WriteLine($"Save {deletedFile} was deleted by {tran.vars.name}");
+                        Console.WriteLine($"{DateTime.Now.ToString()}: Save {deletedFile} was deleted by {tran.what}");
                     }
 
                     continue;
@@ -276,7 +288,7 @@ namespace DonatePayStat
         {
             try
             {
-                File.AppendAllText("Log.txt", str + "\r\n");
+                File.AppendAllText(_logFile, str + "\r\n");
             }
             catch (Exception e)
             {
