@@ -15,22 +15,20 @@ namespace DonatePayStat
 {
     class MainClass
     {
-        private static int _lastId = 0;
-
         private static string _apiKeyFile = "ApiKey.config";
 
-        private static readonly string _lastIdFile = "LastId.config";
-
         private static string _dir = @"DonateSpawn";
-
-        private static DateTime _lastDate = DateTime.Now.Date;
 
         private static Dictionary<double, string> _donatConfigs = new Dictionary<double, string>();
 
         private static string _logFile = $"Log_{DateTime.Now.Date.ToString("dd_MM_yyyy")}.txt";
 
+        private static int _limit = 25;
+
         public static void Main(string[] args)
         {
+            Console.WriteLine("DonatePay Skyrim integration started.");
+
             string donateStatus = "success";
 
             if (args.Length > 0)
@@ -39,12 +37,6 @@ namespace DonatePayStat
             }
 
             _donatConfigs = GetDonateConfigs();
-
-            if (File.Exists(_lastIdFile))
-            {
-                var id = File.ReadAllText(_lastIdFile);
-                int.TryParse(id, out _lastId);
-            }
 
             if (!File.Exists(_apiKeyFile))
             {
@@ -61,25 +53,24 @@ namespace DonatePayStat
                 Directory.CreateDirectory(movedDir);
             }
 
+            Transactions prevTrans = GetTransactions(apiKey, type: "donation", limit: _limit, status: donateStatus);
+
             while (true)
             {
-                Transactions trans = GetTransactions(apiKey, after: _lastId, type: "donation", limit: 10, status: donateStatus);
+                Thread.Sleep(20000);
+                Transactions currentTrans = GetTransactions(apiKey, type: "donation", limit: _limit, status: donateStatus);
 
-
-                if (trans != null && trans.data != null && trans.data.Count > 0)
+                if (currentTrans != null && currentTrans.data != null && currentTrans.data.Count > 0)
                 {
-                    var last = trans.data.First();
-                    _lastId = last.id;
+                    List<Transactionsdata> data = GetNewTransactions(currentTrans, prevTrans);
+                    prevTrans = currentTrans;
 
-                    trans.data = trans.data.Where(d => d.created_at.date > _lastDate).ToList();
-                    _lastDate = last.created_at.date;
-
-                    GenerateSpawns(trans.data, saveGameDir, movedDir);
-
-                    File.WriteAllText(_lastIdFile, _lastId.ToString());
+                    if (data.Any())
+                    {
+                        GenerateSpawns(data, saveGameDir, movedDir);
+                    }
                 }
 
-                Thread.Sleep(20000);
             }
         }
 
@@ -136,7 +127,7 @@ namespace DonatePayStat
 
                     if (!string.IsNullOrEmpty(movedFile))
                     {
-                        string tmp = $"{DateTime.Now.ToString()}: Save {movedFile} was deleted by {tran.what}";
+                        string tmp = $"{DateTime.Now.ToString()}: Save \"{movedFile}\" was deleted by \"{tran.what}\"";
                         Console.WriteLine(tmp);
                         WriteLog(tmp);
                     }
@@ -150,7 +141,7 @@ namespace DonatePayStat
 
                     if (!string.IsNullOrEmpty(restoredFile))
                     {
-                        string tmp = $"{DateTime.Now.ToString()}: Save {restoredFile} was restored by {tran.what}";
+                        string tmp = $"{DateTime.Now.ToString()}: Save \"{restoredFile}\" was restored by \"{tran.what}\"";
                         Console.WriteLine(tmp);
                         WriteLog(tmp);
                     }
@@ -362,6 +353,20 @@ namespace DonatePayStat
             Transactions u = JsonConvert.DeserializeObject<Transactions>(resp, dateTimeConverter);
 
             return u;
+        }
+
+
+        public static List<Transactionsdata> GetNewTransactions(Transactions current, Transactions old)
+        {
+            if (old == null)
+            {
+                return current.data;
+            }
+
+            var oldIds = old.data.Select(d => d.id);
+            var result = current.data.Where(d => !oldIds.Contains(d.id)).ToList();
+
+            return result;
         }
 
 
