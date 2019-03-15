@@ -52,6 +52,14 @@ namespace DonatePayStat
             }
 
             string apiKey = File.ReadAllText(_apiKeyFile);
+            var documents = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var saveGameDir = Path.Combine(documents, @"Documents\My Games\Skyrim\Saves");
+
+            string movedDir = Path.Combine(saveGameDir, "MovedSaves");
+            if (!Directory.Exists(movedDir))
+            {
+                Directory.CreateDirectory(movedDir);
+            }
 
             while (true)
             {
@@ -66,7 +74,7 @@ namespace DonatePayStat
                     trans.data = trans.data.Where(d => d.created_at.date > _lastDate).ToList();
                     _lastDate = last.created_at.date;
 
-                    GenerateSpawns(trans.data);
+                    GenerateSpawns(trans.data, saveGameDir, movedDir);
 
                     File.WriteAllText(_lastIdFile, _lastId.ToString());
                 }
@@ -100,51 +108,8 @@ namespace DonatePayStat
         }
 
 
-        private static string DeleteLastSaveGame()
-        {
-            var documents = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            var saveGameDir = Path.Combine(documents, @"Documents\My Games\Skyrim\Saves");
 
-            if (!Directory.Exists(saveGameDir))
-            {
-                WriteLog(DateTime.Now.ToString() + " Save directory not exists");
-                return null;
-            }
-
-            DirectoryInfo di = new DirectoryInfo(saveGameDir);
-            if (di != null)
-            {
-                FileInfo[] subFiles = di.GetFiles("*.ess");
-
-                if (subFiles.Length > 0)
-                {
-                    var lastSave = subFiles.FirstOrDefault(d => d.LastWriteTime == subFiles.Max(f => f.LastWriteTime));
-                    var secondFile = lastSave.Name.Replace(".ess", ".skse");
-
-                    try
-                    {
-                        File.Delete(lastSave.FullName);
-                        var pathToSecondFile = Path.Combine(lastSave.Directory.FullName, secondFile);
-                        if (File.Exists(pathToSecondFile))
-                        {
-                            File.Delete(pathToSecondFile);
-                        }
-
-                        return lastSave.Name;
-                    }
-                    catch (Exception ex)
-                    {
-                        WriteLog(DateTime.Now.ToString() + " Error delete save " + ex.Message + "\r\n" + ex.InnerException);
-                        Console.WriteLine(ex);
-                    }
-                }
-            }
-
-            return null;
-        }
-
-
-        private static void GenerateSpawns(List<Transactionsdata> transactions)
+        private static void GenerateSpawns(List<Transactionsdata> transactions, string saveGameDir, string movedDir)
         {
             if (!Directory.Exists(_dir))
             {
@@ -167,10 +132,27 @@ namespace DonatePayStat
 
                 if (sValue != null && sValue.Contains("DeleteLastSave"))
                 {
-                    var deletedFile = DeleteLastSaveGame();
-                    if (!string.IsNullOrEmpty(deletedFile))
+                    var movedFile = MoveLastSaveGame(saveGameDir, movedDir);
+
+                    if (!string.IsNullOrEmpty(movedFile))
                     {
-                        Console.WriteLine($"{DateTime.Now.ToString()}: Save {deletedFile} was deleted by {tran.what}");
+                        string tmp = $"{DateTime.Now.ToString()}: Save {movedFile} was deleted by {tran.what}";
+                        Console.WriteLine(tmp);
+                        WriteLog(tmp);
+                    }
+
+                    continue;
+                }
+
+                if (sValue != null && sValue.Contains("RestoreLastSave"))
+                {
+                    var restoredFile = RestoreLastSaveGame(saveGameDir, movedDir);
+
+                    if (!string.IsNullOrEmpty(restoredFile))
+                    {
+                        string tmp = $"{DateTime.Now.ToString()}: Save {restoredFile} was restored by {tran.what}";
+                        Console.WriteLine(tmp);
+                        WriteLog(tmp);
                     }
 
                     continue;
@@ -217,6 +199,140 @@ namespace DonatePayStat
             }
 
         }
+
+        private static string RestoreLastSaveGame(string saveGameDir, string movedDir)
+        {
+            if (!Directory.Exists(saveGameDir) || !Directory.Exists(movedDir))
+            {
+                WriteLog(DateTime.Now.ToString() + " Restore last save game directory not found");
+                return null;
+            }
+
+            DirectoryInfo di = new DirectoryInfo(movedDir);
+            if (di != null)
+            {
+                FileInfo[] subFiles = di.GetFiles("*.ess");
+
+                if (subFiles.Length > 0)
+                {
+                    var lastSave = subFiles.FirstOrDefault(d => d.LastWriteTime == subFiles.Max(f => f.LastWriteTime));
+
+                    try
+                    {
+
+                        var newFullPath = Path.Combine(saveGameDir, lastSave.Name);
+
+                        while (File.Exists(newFullPath))
+                        {
+                            string tempFileName = $"{DateTime.Now.ToString("dd_hh_mm_ss")}_{lastSave.Name}";
+                            newFullPath = Path.Combine(saveGameDir, tempFileName);
+                            Thread.Sleep(1000);
+                        }
+
+                        lastSave.MoveTo(newFullPath);
+                        WriteLog(DateTime.Now.ToString() + $" File {lastSave.Name} restored");
+
+                        return lastSave.Name;
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog(DateTime.Now.ToString() + " Error restore save " + ex.Message + "\r\n" + ex.InnerException);
+                        Console.WriteLine(ex);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static string MoveLastSaveGame(string saveGameDir, string movedDir)
+        {
+            if (!Directory.Exists(saveGameDir))
+            {
+                WriteLog(DateTime.Now.ToString() + " Save directory not exists");
+                return null;
+            }
+
+            DirectoryInfo di = new DirectoryInfo(saveGameDir);
+            if (di != null)
+            {
+                FileInfo[] subFiles = di.GetFiles("*.ess");
+
+                if (subFiles.Length > 0)
+                {
+                    var lastSave = subFiles.FirstOrDefault(d => d.LastWriteTime == subFiles.Max(f => f.LastWriteTime));
+
+                    try
+                    {
+                        var newFullPath = Path.Combine(movedDir, lastSave.Name);
+
+                        while (File.Exists(newFullPath))
+                        {
+                            string tempFileName = $"{DateTime.Now.ToString("dd_hh_mm_ss")}_{lastSave.Name}";
+                            newFullPath = Path.Combine(movedDir, tempFileName);
+                            Thread.Sleep(1000);
+                        }
+
+                        lastSave.MoveTo(newFullPath);
+                        WriteLog(DateTime.Now.ToString() + $" File {lastSave.Name} moved");
+
+                        return lastSave.Name;
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog(DateTime.Now.ToString() + " Error move save " + ex.Message + "\r\n" + ex.InnerException);
+                        Console.WriteLine(ex);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static string DeleteLastSaveGame()
+        {
+            var documents = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var saveGameDir = Path.Combine(documents, @"Documents\My Games\Skyrim\Saves");
+
+            if (!Directory.Exists(saveGameDir))
+            {
+                WriteLog(DateTime.Now.ToString() + " Save directory not exists");
+                return null;
+            }
+
+            DirectoryInfo di = new DirectoryInfo(saveGameDir);
+            if (di != null)
+            {
+                FileInfo[] subFiles = di.GetFiles("*.ess");
+
+                if (subFiles.Length > 0)
+                {
+                    var lastSave = subFiles.FirstOrDefault(d => d.LastWriteTime == subFiles.Max(f => f.LastWriteTime));
+                    var secondFile = lastSave.Name.Replace(".ess", ".skse");
+
+                    try
+                    {
+                        File.Delete(lastSave.FullName);
+                        var pathToSecondFile = Path.Combine(lastSave.Directory.FullName, secondFile);
+                        if (File.Exists(pathToSecondFile))
+                        {
+                            File.Delete(pathToSecondFile);
+                        }
+
+                        return lastSave.Name;
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteLog(DateTime.Now.ToString() + " Error delete save " + ex.Message + "\r\n" + ex.InnerException);
+                        Console.WriteLine(ex);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+
 
         public static Transactions GetTransactions(string apikey, int limit = 25, int before = 0, int after = 0, int skip = 0, string order = "DESC", string type = "all", string status = "all")
         {
