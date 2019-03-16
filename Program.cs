@@ -25,11 +25,16 @@ namespace DonatePayStat
 
         private static int _limit = 25;
 
+        private static Stack<string> _saveQueue = new Stack<string>();
+
         public static void Main(string[] args)
         {
             Console.WriteLine("DonatePay Skyrim integration started.");
-
+#if DEBUG
+            string donateStatus = "all";
+#else
             string donateStatus = "success";
+#endif
 
             if (args.Length > 0)
             {
@@ -199,37 +204,38 @@ namespace DonatePayStat
                 return null;
             }
 
-            DirectoryInfo di = new DirectoryInfo(movedDir);
-            if (di != null)
+            if (!_saveQueue.Any())
             {
-                FileInfo[] subFiles = di.GetFiles("*.ess");
+                Console.WriteLine("No save file to restore");
+                return null;
+            }
 
-                if (subFiles.Length > 0)
+            var restoreFileName = _saveQueue.Pop();
+            var restoreFileFullPath = Path.Combine(movedDir, restoreFileName);
+
+            if (File.Exists(restoreFileFullPath))
+            {
+                try
                 {
-                    var lastSave = subFiles.FirstOrDefault(d => d.LastWriteTime == subFiles.Max(f => f.LastWriteTime));
+                    var newFullPath = Path.Combine(saveGameDir, restoreFileName);
 
-                    try
+                    while (File.Exists(newFullPath))
                     {
-
-                        var newFullPath = Path.Combine(saveGameDir, lastSave.Name);
-
-                        while (File.Exists(newFullPath))
-                        {
-                            string tempFileName = $"{DateTime.Now.ToString("dd_hh_mm_ss")}_{lastSave.Name}";
-                            newFullPath = Path.Combine(saveGameDir, tempFileName);
-                            Thread.Sleep(1000);
-                        }
-
-                        lastSave.MoveTo(newFullPath);
-                        WriteLog(DateTime.Now.ToString() + $" File {lastSave.Name} restored");
-
-                        return lastSave.Name;
+                        string tempFileName = $"{DateTime.Now.ToString("dd_hh_mm_ss")}_{restoreFileName}";
+                        newFullPath = Path.Combine(saveGameDir, tempFileName);
+                        Thread.Sleep(1000);
                     }
-                    catch (Exception ex)
-                    {
-                        WriteLog(DateTime.Now.ToString() + " Error restore save " + ex.Message + "\r\n" + ex.InnerException);
-                        Console.WriteLine(ex);
-                    }
+
+                    File.Move(restoreFileFullPath, newFullPath);
+                    WriteLog(DateTime.Now.ToString() + $" File {restoreFileName} restored");
+
+                    return restoreFileName;
+                }
+                catch (Exception ex)
+                {
+                    _saveQueue.Push(restoreFileName);
+                    WriteLog(DateTime.Now.ToString() + " Error restore save " + ex.Message + "\r\n" + ex.InnerException);
+                    Console.WriteLine(ex);
                 }
             }
 
@@ -255,16 +261,19 @@ namespace DonatePayStat
 
                     try
                     {
+                        string tempFileName = lastSave.Name;
                         var newFullPath = Path.Combine(movedDir, lastSave.Name);
 
                         while (File.Exists(newFullPath))
                         {
-                            string tempFileName = $"{DateTime.Now.ToString("dd_hh_mm_ss")}_{lastSave.Name}";
+                            tempFileName = $"{DateTime.Now.ToString("dd_hh_mm_ss")}_{lastSave.Name}";
                             newFullPath = Path.Combine(movedDir, tempFileName);
                             Thread.Sleep(1000);
                         }
 
                         lastSave.MoveTo(newFullPath);
+                        _saveQueue.Push(tempFileName);
+
                         WriteLog(DateTime.Now.ToString() + $" File {lastSave.Name} moved");
 
                         return lastSave.Name;
