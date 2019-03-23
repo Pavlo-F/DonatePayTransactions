@@ -22,8 +22,8 @@ namespace DonatePayStat
         private static Dictionary<double, string> _donatConfigs = new Dictionary<double, string>();
 
         private static string _logFile = $"Log_{DateTime.Now.Date.ToString("dd_MM_yyyy")}.txt";
-
-        private static int _limit = 25;
+        
+        private static int _limit = 50;
 
         private static Stack<string> _saveQueue = new Stack<string>();
 
@@ -186,7 +186,7 @@ namespace DonatePayStat
 
                     if (comandCount > 0)
                     {
-                        var createdStr = $"Spawn created, command: {command}, count: {comandCount}";
+                        var createdStr = $"Spawn created, command: {command}";
                         Console.WriteLine(createdStr);
                         WriteLog(createdStr);
                     }
@@ -194,7 +194,6 @@ namespace DonatePayStat
 
                 Console.WriteLine();
             }
-
         }
 
         private static string RestoreLastSaveGame(string saveGameDir, string movedDir)
@@ -219,16 +218,16 @@ namespace DonatePayStat
                 try
                 {
                     var newFullPath = Path.Combine(saveGameDir, restoreFileName);
+					int count = 1;
 
                     while (File.Exists(newFullPath))
                     {
-                        string tempFileName = $"{DateTime.Now.ToString("dd_hh_mm_ss")}_{restoreFileName}";
+						string tempFileName = $"{count}_{restoreFileName}";
                         newFullPath = Path.Combine(saveGameDir, tempFileName);
-                        Thread.Sleep(1000);
+						count++;
                     }
 
                     File.Move(restoreFileFullPath, newFullPath);
-                    WriteLog(DateTime.Now.ToString() + $" File {restoreFileName} restored");
 
                     return restoreFileName;
                 }
@@ -264,18 +263,17 @@ namespace DonatePayStat
                     {
                         string tempFileName = lastSave.Name;
                         var newFullPath = Path.Combine(movedDir, lastSave.Name);
+						int count = 1;
 
                         while (File.Exists(newFullPath))
                         {
-                            tempFileName = $"{DateTime.Now.ToString("dd_hh_mm_ss")}_{lastSave.Name}";
+							tempFileName = $"{count}_{lastSave.Name}";
                             newFullPath = Path.Combine(movedDir, tempFileName);
-                            Thread.Sleep(1000);
+							count++;
                         }
 
                         lastSave.MoveTo(newFullPath);
                         _saveQueue.Push(tempFileName);
-
-                        WriteLog(DateTime.Now.ToString() + $" File {lastSave.Name} moved");
 
                         return lastSave.Name;
                     }
@@ -338,24 +336,26 @@ namespace DonatePayStat
         public static Transactions GetTransactions(string apikey, int limit = 25, int before = 0, int after = 0, int skip = 0, string order = "DESC", string type = "all", string status = "all")
         {
             string url = "http://donatepay.ru/api/v1/transactions";
-            string parameters = "";
 
-            if (limit != 25)
-                parameters += "&limit=" + limit;
+			string parameters = "&limit=" + limit;
+
             if (before != 0)
                 parameters += "&before=" + before;
             if (after != 0)
                 parameters += "&after=" + after;
             if (skip != 0)
                 parameters += "&skip=" + skip;
-            if (order != "DESC")
-                parameters += "&order=" + order;
+			
+            parameters += "&order=" + order;
+
             if (type != "all")
                 parameters += "&type=" + type;
             if (status != "all")
                 parameters += "&status=" + status;
 
             string resp = GetResponse(url + "?access_token=" + apikey + parameters);
+
+			SaveTrans(resp);
 
             var format = "yyyy-MM-dd HH:mm:ss.ffffff";
             var dateTimeConverter = new IsoDateTimeConverter { DateTimeFormat = format };
@@ -365,6 +365,24 @@ namespace DonatePayStat
             return u;
         }
 
+		private static void SaveTrans(string trans)
+		{
+			try
+			{
+				if (!Directory.Exists("Transactions"))
+				{
+					Directory.CreateDirectory("Transactions");
+				}
+
+				var savePath = Path.Combine("Transactions", DateTime.Now.ToString("dd_MM_yyyy_hh_mm_ss")+".json");
+
+				File.WriteAllText(savePath, trans);
+			}
+			catch (Exception ex)
+			{
+				// ignore
+			}
+		}
 
         public static List<Transactionsdata> GetNewTransactions(Transactions current, Transactions old)
         {
@@ -398,7 +416,8 @@ namespace DonatePayStat
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error GetResponse. Exception: {ex.ToString()}");
+				Console.WriteLine($"Error connecting to DonatePay");
+				WriteLog($"Error GetResponse. Exception: {ex.ToString()}");
             }
 
             return data;
